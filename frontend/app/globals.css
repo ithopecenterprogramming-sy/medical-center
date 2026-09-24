@@ -1,0 +1,27 @@
+/* app/globals.css */
+@import "tailwindcss";
+@variant dark (&:where(.dark, .dark *));
+@theme {
+  /* تحديد الخط الأساسي */
+  --font-sans: var(--font-primary), sans-serif;
+
+  /* درجات الألوان الخاصة بالهوية (Brand Colors) */
+  --color-brand-300: #fde047;
+  --color-brand-400: #facc15;
+  --color-brand-500: #eab308;
+  --color-brand-600: #ca8a04;
+
+  /* ألوان الخلفيات والأسطح */
+  --color-surface-main: #020617;
+  --color-surface-card: #0f172a;
+  --color-surface-border: #1e293b;
+}
+
+body {
+  font-family: var(--font-primary);
+  background-color: var(--color-surface-main);
+  color: #f8fafc;
+}
+html {
+  scroll-behavior: smooth;
+}
