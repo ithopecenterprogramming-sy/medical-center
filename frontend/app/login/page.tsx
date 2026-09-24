@@ -1,118 +1,225 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useAuth } from '@/context/AuthContext';
+import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 
 export default function LoginPage() {
-  const [showPassword, setShowPassword] = useState(false);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { login, user, loading } = useAuth();
+
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [sessionExpiredMsg, setSessionExpiredMsg] = useState<boolean>(false);
+
+  // 1. حالة العداد التنازلي (بالثواني)
+  const [lockoutTime, setLockoutTime] = useState<number>(0);
+
+  // إذا كان المستخدم مسجلاً بالفعل، نعيده للوحة التحكم
+  useEffect(() => {
+    if (!loading && user) {
+      router.push('/dashboard');
+    }
+  }, [user, loading, router]);
+// فحص وقت الحظر المخزن عند فتح الصفحة أو عمل Refresh
+useEffect(() => {
+  const savedExpiry = localStorage.getItem('login_lockout_expiry');
+  if (savedExpiry) {
+    const remainingSeconds = Math.ceil((parseInt(savedExpiry, 10) - Date.now()) / 1000);
+    if (remainingSeconds > 0) {
+      setLockoutTime(remainingSeconds);
+      setErrorMsg('محاولات كثيرة متكررة، يرجى الانتظار حتى انتهاء العداد لإعادة المحاولة.');
+    } else {
+      localStorage.removeItem('login_lockout_expiry');
+    }
+  }
+}, []);
+  // فحص الرابط بحثاً عن expired=1
+  useEffect(() => {
+    if (searchParams.get('expired') === '1') {
+      setSessionExpiredMsg(true);
+      router.replace('/login');
+    }
+  }, [searchParams, router]);
+
+  // 2. محرك العداد التنازلي للخصم كل ثانية
+  useEffect(() => {
+    if (lockoutTime <= 0) return;
+
+    const timer = setInterval(() => {
+      setLockoutTime((prev) => {
+        if (prev <= 1) {
+          setErrorMsg(null); // مسح رسالة القفل عند انتهاء الوقت
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [lockoutTime]);
+
+  // دالة تحويل الثواني إلى صيغة (MM:SS)
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+ const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (lockoutTime > 0 || isSubmitting) return;
+
+  setErrorMsg(null);
+  setSessionExpiredMsg(false);
+  setIsSubmitting(true);
+
+  try {
+    await login({ email, password });
+  } catch (error: any) {
+    // إيقاف حالة التحميل فوراً داخل catch
+    setIsSubmitting(false);
+
+    const status = error.response?.status;
+
+    if (status === 429) {
+      const retryAfterHeader = error.response?.headers?.['retry-after'];
+      const secondsLeft = retryAfterHeader ? parseInt(retryAfterHeader, 10) : 300;
+
+      const expiryTime = Date.now() + secondsLeft * 1000;
+      localStorage.setItem('login_lockout_expiry', expiryTime.toString());
+
+      setLockoutTime(secondsLeft);
+      setErrorMsg('محاولات كثيرة متكررة، يرجى الانتظار حتى انتهاء العداد لإعادة المحاولة.');
+    } else if (status === 422 || status === 401) {
+      setErrorMsg('البريد الإلكتروني أو كلمة المرور غير صحيحة.');
+    } else {
+      setErrorMsg('حدث خطأ في الاتصال، يرجى المحاولة لاحقاً.');
+    }
+  } finally {
+    // التأكيد الإضافي لإنهاء التحميل
+    setIsSubmitting(false);
+  }
+};
+  if (loading) return null;
 
   return (
-    <div className="relative min-h-[calc(100vh-5rem)] flex items-center justify-center p-4 bg-slate-100/70 dark:bg-slate-950 transition-colors duration-300 overflow-hidden">
-      
-      {/* 🌟 شبكة النقاط الخلفية لمنع المساحات الفارغة الناصعة */}
-      <div className="absolute inset-0 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] dark:bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:24px_24px] opacity-50 pointer-events-none"></div>
+    <div className="min-h-screen bg-slate-100/70 dark:bg-slate-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8 transition-colors duration-300">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md">
+        <h2 className="mt-6 text-center text-3xl font-black text-slate-900 dark:text-white">
+          تسجيل الدخول
+        </h2>
+        <p className="mt-2 text-center text-sm text-slate-500 dark:text-slate-400">
+          بوابة الإدارة الطبية المتكاملة
+        </p>
+      </div>
 
-      {/* 🌟 إضاءات تفاعلية ملونة خلف الكارت */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[450px] h-[350px] bg-amber-500/15 dark:bg-amber-500/10 rounded-full blur-[120px] pointer-events-none"></div>
-      <div className="absolute top-10 right-10 w-64 h-64 bg-blue-500/10 dark:bg-blue-600/10 rounded-full blur-[100px] pointer-events-none"></div>
-
-      {/* بطاقة تسجيل الدخول Card */}
-      <div className="relative z-10 w-full max-w-md bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/80 dark:border-slate-800 rounded-3xl p-8 sm:p-10 shadow-2xl shadow-slate-300/40 dark:shadow-none transition-colors duration-300">
-        
-        {/* شريط أعلى الكارت ترحيبي */}
-        <div className="text-center space-y-2 mb-8">
-          <div className="w-14 h-14 bg-gradient-to-tr from-amber-600 via-amber-500 to-amber-400 rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-amber-500/25 mb-4">
-            <span className="text-slate-950 font-black text-2xl">م</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
-            تسجيل الدخول
-          </h1>
-          <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm font-medium">
-            مرحباً بك، يرجى إدخال بياناتك للدخول للنظام
-          </p>
-        </div>
-
-        <form className="space-y-5" onSubmit={(e) => e.preventDefault()}>
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="bg-white dark:bg-slate-900 py-8 px-4 shadow-xl shadow-amber-500/5 dark:shadow-none sm:rounded-3xl sm:px-10 border border-slate-200 dark:border-slate-800">
           
-          {/* حقل اسم المستخدم / البريد */}
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-              اسم المستخدم / البريد الإلكتروني
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="اسم المستخدم أو البريد..."
-                className="w-full pl-4 pr-11 py-3 rounded-2xl bg-slate-50/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 text-sm font-medium focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all duration-200"
-              />
-              <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-base pointer-events-none">
-                👤
+          <AnimatePresence>
+            {/* تنبيه انتهاء الجلسة */}
+            {sessionExpiredMsg && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="mb-6 p-4 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 flex items-start gap-3"
+              >
+                <span className="text-amber-500 mt-0.5">⚠️</span>
+                <p className="text-xs font-medium text-amber-800 dark:text-amber-500">
+                  انتهت صلاحية الجلسة لدواعي أمنية. يرجى إعادة تسجيل الدخول لمتابعة عملك.
+                </p>
+              </motion.div>
+            )}
+
+            {/* تنبيه الخطأ مع العداد التنازلي */}
+            {errorMsg && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="mb-6 p-4 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-xs font-medium text-red-800 dark:text-red-500 text-center"
+              >
+                <div>{errorMsg}</div>
+                {lockoutTime > 0 && (
+                  <div className="mt-2 text-sm font-bold text-amber-500 dir-ltr">
+                    ⏱️ {formatTime(lockoutTime)}
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <form className="space-y-6" onSubmit={handleSubmit}>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                البريد الإلكتروني
+              </label>
+              <div className="mt-1">
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  disabled={lockoutTime > 0}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="appearance-none block w-full px-4 py-3 border border-slate-300 dark:border-slate-700 rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-amber-500 focus:border-amber-500 dark:bg-slate-950 dark:text-white sm:text-sm transition-colors disabled:opacity-50"
+                  placeholder="admin@example.com"
+                  dir="ltr"
+                />
               </div>
             </div>
-          </div>
 
-          {/* حقل كلمة المرور */}
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-              كلمة المرور
-            </label>
-            <div className="relative">
-              <input
-                type={showPassword ? 'text' : 'password'}
-                placeholder="••••••••"
-                className="w-full pl-11 pr-11 py-3 rounded-2xl bg-slate-50/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 text-sm font-medium focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all duration-200"
-              />
-              <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-base pointer-events-none">
-                🔐
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                كلمة المرور
+              </label>
+              <div className="mt-1">
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  disabled={lockoutTime > 0}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="appearance-none block w-full px-4 py-3 border border-slate-300 dark:border-slate-700 rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-amber-500 focus:border-amber-500 dark:bg-slate-950 dark:text-white sm:text-sm transition-colors disabled:opacity-50"
+                  placeholder="••••••••"
+                  dir="ltr"
+                />
               </div>
+            </div>
+
+            {/* زر الدخول المعطل أثناء العداد */}
+            <div>
               <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs font-medium transition-colors"
+                type="submit"
+                disabled={isSubmitting || lockoutTime > 0}
+                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-bold text-slate-950 bg-amber-500 hover:bg-amber-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
               >
-                {showPassword ? 'إخفاء' : 'إظهار'}
+                {isSubmitting ? (
+                  <div className="flex items-center gap-2">
+                    <span className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                    جاري الدخول...
+                  </div>
+                ) : lockoutTime > 0 ? (
+                  `يرجى الانتظار (${formatTime(lockoutTime)})`
+                ) : (
+                  'دخول للنظام'
+                )}
               </button>
             </div>
-          </div>
+          </form>
 
-          {/* تذكرني + نسيت كلمة المرور */}
-          <div className="flex items-center justify-between text-xs font-medium pt-1">
-            <label className="flex items-center gap-2 cursor-pointer text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 transition-colors">
-              <input
-                type="checkbox"
-                className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-amber-500 focus:ring-amber-500/30 accent-amber-500 cursor-pointer"
-              />
-              تذكرني
-            </label>
-       
-            {/* هنا التحديث 👉 */}
-            <Link 
-              href="/forgot-password" 
-              className="text-amber-600 dark:text-amber-400 hover:underline transition-all font-semibold"
-            >
-              نسيت كلمة المرور؟
+          <div className="mt-6 text-center text-xs text-slate-500">
+            <Link href="/" className="hover:text-amber-500 transition-colors">
+              العودة للصفحة الرئيسية &rarr;
             </Link>
           </div>
-
-          {/* زر تسجيل الدخول */}
-          <button
-            type="submit"
-            className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black py-3.5 rounded-2xl transition-all shadow-lg shadow-amber-500/25 hover:shadow-amber-500/40 hover:-translate-y-0.5 active:translate-y-0 text-sm mt-2"
-          >
-            دخول للنظام
-          </button>
-        </form>
-
-        {/* العودة للرئيسية */}
-        <div className="mt-8 text-center border-t border-slate-200/80 dark:border-slate-800/80 pt-6">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
-          >
-            <span>←</span> العودة للصفحة الرئيسية
-          </Link>
         </div>
-
       </div>
     </div>
   );

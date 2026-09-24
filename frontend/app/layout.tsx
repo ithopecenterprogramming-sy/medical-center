@@ -4,7 +4,7 @@ import './globals.css';
 import { Providers } from './providers';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
-
+import { AuthProvider } from '@/context/AuthContext';
 const primaryFont = Readex_Pro({
   subsets: ['arabic', 'latin'],
   weight: ['300', '400', '500', '600', '700'],
@@ -31,7 +31,8 @@ export default function RootLayout({
 
           {/* محتوى الصفحات المتغير */}
           <main className="flex-grow">
-            {children}
+            <AuthProvider>   {children}</AuthProvider>
+         
           </main>
 
           {/* الفوتر المطور */}

@@ -8,8 +8,8 @@ use App\Http\Resources\UserResource;
 use App\Services\AuthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-
-class AuthController extends Controller
+use Illuminate\Support\Facades\RateLimiter;
+ class AuthController extends Controller
 {
     public function __construct(
         private readonly AuthService $authService
@@ -19,12 +19,35 @@ class AuthController extends Controller
     /**
      * Login user.
      */
-    public function login(LoginRequest $request): JsonResponse
-    {
-        $result = $this->authService->login(
-            $request->string('email')->toString(),
-            $request->string('password')->toString()
-        );
+  
+
+public function login(LoginRequest $request): JsonResponse
+{
+    $email = $request->string('email')->toString();
+    $password = $request->string('password')->toString();
+
+    // 1. تحديد مفتاح الحظر (البريد الإلكتروني + عنوان الـ IP)
+    $throttleKey = mb_strtolower($email) . '|' . $request->ip();
+
+    // 2. التحقق مما إذا كان المستخدم محظوراً حالياً (مثلاً بعد 5 محاولات فاشلة)
+    if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
+        // قراءة الثواني المتبقية الحقيقية دون إضافة محاولة جديدة (حتى لا يتم تصفير العداد)
+        $seconds = RateLimiter::availableIn($throttleKey);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'محاولات كثيرة متكررة، يرجى الانتظار حتى انتهاء العداد.',
+        ], 429, [
+            'Retry-After' => $seconds, // يُرجع الثواني المتبقية الفعلية للفرونت إند
+        ]);
+    }
+
+    try {
+        // 3. تنفيذ عملية تسجيل الدخول عبر الـ Service
+        $result = $this->authService->login($email, $password);
+
+        // 4. في حال نجاح الدخول: مسح سجل المحاولات الفاشلة للمستخدم
+        RateLimiter::clear($throttleKey);
 
         return response()->json([
             'success' => true,
@@ -34,8 +57,18 @@ class AuthController extends Controller
                 'token' => $result['token'],
             ],
         ], 200);
-    }
 
+    } catch (\Exception $e) {
+        // 5. في حال فشل تسجيل الدخول (كلمة مرور خطأ مثلاً): تسجيل محاولة فاشلة بمدة حظر 5 دقائق (300 ثانية)
+        RateLimiter::hit($throttleKey, 300);
+
+        // إعادة إرجاع استجابة الخطأ (أو ترك الـ ExceptionHandler يتعامل معها)
+        return response()->json([
+            'success' => false,
+            'message' => 'بيانات الدخول غير صحيحة.',
+        ], 401);
+    }
+}
     /**
      * Logout current user.
      */
