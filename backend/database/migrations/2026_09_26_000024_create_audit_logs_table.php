@@ -15,6 +15,8 @@ return new class extends Migration
                 ->nullable()
                 ->constrained('users')
                 ->nullOnDelete();
+            $table->string('name');
+            $table->text('notes')->nullable();;
 
             $table->string('action', 80);
 

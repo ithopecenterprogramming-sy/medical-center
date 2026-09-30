@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
@@ -7,10 +6,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class AuditLog extends Model
 {
-    public $timestamps = false;
+    public $timestamps = false; // لأن جدول المراقبة يحتوي فقط على created_at
 
     protected $fillable = [
         'user_id',
+        'name',
+        'notes',
         'action',
         'auditable_type',
         'auditable_id',
@@ -27,17 +28,12 @@ class AuditLog extends Model
     protected $casts = [
         'old_values' => 'array',
         'new_values' => 'array',
-        'metadata' => 'array',
+        'metadata'   => 'array',
         'created_at' => 'datetime',
     ];
 
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
-    }
-
-    public function auditable()
-    {
-        return $this->morphTo();
     }
 }

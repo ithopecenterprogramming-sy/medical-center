@@ -71,13 +71,18 @@ class ClinicService
      */
     public function delete(Clinic $clinic): bool
     {
-        if ($clinic->appointments()->exists() || $clinic->visits()->exists()) {
-            throw new Exception("لا يمكن نقل العيادة إلى سلة المحذوفات لارتباطها بمواعيد أو زيارات قائمة.", 400);
+        // التحقق من وجود أي سجلات مرتبطة بالعيادة في كل العلاقات
+        if (
+            $clinic->appointments()->exists() ||
+            $clinic->visits()->exists() ||
+            $clinic->schedules()->exists() ||
+            $clinic->doctorClinics()->exists()
+        ) {
+            throw new Exception("لا يمكن نقل العيادة إلى سلة المحذوفات لارتباطها بسجلات أخرى (مواعيد، زيارات، جداول أطباء، أو أطباء مرتبطين).", 400);
         }
 
         return $clinic->delete();
     }
-
     /**
      * استعادة عيادة محذوفة مؤقتاً
      */
@@ -95,8 +100,13 @@ class ClinicService
     {
         $clinic = Clinic::withTrashed()->findOrFail($id);
 
-        if ($clinic->appointments()->exists() || $clinic->visits()->exists() || $clinic->doctors()->exists()) {
-            throw new Exception("لا يمكن حذف العيادة نهائياً لارتباطها بسجلات في النظام (أطباء، مواعيد، أو زيارات).", 400);
+        if (
+            $clinic->doctorClinics()->exists() ||
+            $clinic->schedules()->exists() ||
+            $clinic->appointments()->exists() ||
+            $clinic->visits()->exists()
+        ) {
+            throw new Exception("لا يمكن حذف العيادة نهائياً لارتباطها بسجلات أخرى في النظام.", 400);
         }
 
         return $clinic->forceDelete();

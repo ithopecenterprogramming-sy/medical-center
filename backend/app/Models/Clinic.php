@@ -7,10 +7,10 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-
+use App\Traits\Auditable;
 class Clinic extends Model
 {
-    use SoftDeletes;
+    use SoftDeletes,Auditable;
 
     protected $fillable = [
         'department_id',
@@ -23,6 +23,7 @@ class Clinic extends Model
     protected $casts = [
         'is_active' => 'boolean',
     ];
+    
 
     public function department(): BelongsTo
     {

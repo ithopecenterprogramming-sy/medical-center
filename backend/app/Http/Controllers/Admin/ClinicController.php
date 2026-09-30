@@ -64,6 +64,7 @@ class ClinicController extends Controller
         }
     }
 
+ 
     public function destroy(Clinic $clinic): JsonResponse
     {
         try {
@@ -75,11 +76,10 @@ class ClinicController extends Controller
                 return $this->badRequestResponse($e->getMessage());
             }
             return $this->errorResponse($e->getMessage(), 500);
-        } catch (Throwable $e) {
-            return $this->errorResponse($e->getMessage(), 500);
+        }catch (Throwable $e) {
+                return $this->errorResponse($e->getMessage(), 500);
         }
     }
-
     public function restore(int $id): JsonResponse
     {
         try {
@@ -101,8 +101,6 @@ class ClinicController extends Controller
             if ($e->getCode() === 400) {
                 return $this->badRequestResponse($e->getMessage());
             }
-            return $this->errorResponse($e->getMessage(), 500);
-        } catch (Throwable $e) {
             return $this->errorResponse($e->getMessage(), 500);
         }
     }

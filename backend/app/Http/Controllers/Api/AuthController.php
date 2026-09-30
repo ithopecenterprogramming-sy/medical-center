@@ -9,8 +9,12 @@ use App\Services\AuthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
+use App\Models\AuditLog;
+use App\Traits\ApiResponse;
+
  class AuthController extends Controller
 {
+    use ApiResponse;
     public function __construct(
         private readonly AuthService $authService
     ) {
@@ -22,66 +26,85 @@ use Illuminate\Support\Facades\RateLimiter;
   
 
    public function login(LoginRequest $request): JsonResponse
-{
-    $email = $request->string('email')->toString();
-    $password = $request->string('password')->toString();
+    {
+        $email = $request->string('email')->toString();
+        $password = $request->string('password')->toString();
 
-    $throttleKey = mb_strtolower($email) . '|' . $request->ip();
+        $throttleKey = mb_strtolower($email) . '|' . $request->ip();
 
-    if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
-        $seconds = RateLimiter::availableIn($throttleKey);
+        if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
+            $seconds = RateLimiter::availableIn($throttleKey);
 
-        return response()->json([
-            'success' => false,
-            'message' => 'محاولات كثيرة متكررة، يرجى الانتظار حتى انتهاء العداد.',
-        ], 429, [
-            'Retry-After' => $seconds,
-        ]);
-    }
+            return response()->json([
+                'success' => false,
+                'message' => 'محاولات كثيرة متكررة، يرجى الانتظار حتى انتهاء العداد.',
+            ], 429, [
+                'Retry-After' => $seconds,
+            ]);
+        }
 
-    try {
-        $result = $this->authService->login($email, $password);
+        try {
+            $result = $this->authService->login($email, $password);
 
-        RateLimiter::clear($throttleKey);
+            RateLimiter::clear($throttleKey);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Login successful.',
-            'data' => [
-                'user' => new UserResource($result['user']),
+            $user = $result['user'];
+
+            // تسجيل حدث تسجيل الدخول بنجاح في جدول audit_logs
+           // عند تسجيل الدخول (login)
+            AuditLog::create([
+                'user_id'    => $user->id,
+                'name'       => $user->name,
+                'notes'      => "قام {$user->name} بتسجيل الدخول إلى النظام.",
+                'action'     => 'login',
+                'route'      => $request->path(),
+                'method'     => $request->method(),
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+                'created_at' => now(),
+            ]);
+
+            return $this->successResponse([
+                'user'  => new UserResource($user),
                 'token' => $result['token'],
-            ],
-        ], 200);
+            ], 'تم تسجيل الدخول بنجاح.');
 
-    } catch (\Illuminate\Auth\AuthenticationException $e) {
-        // فشل في تطابق البريد أو كلمة المرور
-        RateLimiter::hit($throttleKey, 300);
+        } catch (\Illuminate\Auth\AuthenticationException $e) {
+            // فشل في تطابق البريد أو كلمة المرور
+            RateLimiter::hit($throttleKey, 300);
 
-        return response()->json([
-            'success' => false,
-            'message' => 'بيانات الدخول غير صحيحة.',
-        ], 401);
+            return $this->errorResponse('بيانات الدخول غير صحيحة.', 401);
 
-    } catch (\Throwable $e) {
-        // خطأ سيرفر أو استثناء غير متوقع داخل الـ AuthService
-        return response()->json([
-            'success' => false,
-            'message' => 'حدث خطأ في السيرفر أثناء تسجيل الدخول.',
-            'error' => config('app.debug') ? $e->getMessage() : null,
-        ], 500);
+        } catch (Throwable $e) {
+            return $this->errorResponse('حدث خطأ في السيرفر أثناء تسجيل الدخول.', 500, config('app.debug') ? $e->getMessage() : null);
+        }
     }
-}
     /**
      * Logout current user.
      */
     public function logout(Request $request): JsonResponse
     {
-        $this->authService->logout($request->user());
+        $user = $request->user();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Logout successful.',
-        ], 200);
+        if ($user) {
+            // تسجيل حدث تسجيل الخروج في جدول audit_logs قبل إبطال التوكن
+            // عند تسجيل الخروج (logout)
+            AuditLog::create([
+                'user_id'    => $user->id,
+                'name'       => $user->name,
+                'notes'      => "قام {$user->name} بتسجيل الخروج من النظام.",
+                'action'     => 'logout',
+                'route'      => $request->path(),
+                'method'     => $request->method(),
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+                'created_at' => now(),
+            ]);
+
+            $this->authService->logout($user);
+        }
+
+        return $this->successResponse(null, 'تم تسجيل الخروج بنجاح.');
     }
 
     /**
@@ -92,16 +115,9 @@ use Illuminate\Support\Facades\RateLimiter;
         $user = $request->user();
 
         if (! $user) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Unauthenticated or invalid token.',
-            ], 401);
+            return $this->errorResponse('Unauthenticated or invalid token.', 401);
         }
 
-        return response()->json([
-            'success' => true,
-            'message' => 'User profile retrieved successfully.',
-            'data' => new UserResource($user),
-        ], 200);
+        return $this->successResponse(new UserResource($user), 'User profile retrieved successfully.');
     }
 }

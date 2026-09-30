@@ -52,33 +52,25 @@ class SpecialtyService
             if ($specialty->doctorProfiles()->exists()) {
                 throw new Exception("لا يمكن حذف التخصص نهائياً لأنه مرتبط بأطباء حاليين في النظام.", 422);
             }
-            return $specialty->forceDelete();
+            return $specialty->delete();
         }
 
         return $specialty->delete(); // Soft Delete
     }
-    public function forceDelete(int $id): JsonResponse
+   public function forceDelete(int $id): bool
     {
-        try {
-            $this->specialtyService->forceDelete($id);
+        // 1. البحث عن التخصص بما في ذلك المحذوفات مؤقتاً (Soft Deleted)
+        $specialty = Specialty::withTrashed()->findOrFail($id);
 
-            return response()->json([
-                'success' => true,
-                'status_code' => 200,
-                'message' => 'تم حذف التخصص نهائياً من النظام.',
-            ], 200);
-
-        } catch (Exception $e) {
-            $statusCode = ($e->getCode() >= 400 && $e->getCode() < 600) ? $e->getCode() : 422;
-            return response()->json([
-                'success' => false,
-                'status_code' => $statusCode,
-                'message' => $e->getMessage(),
-            ], $statusCode);
-        } catch (Throwable $e) {
-            return $this->handleException($e);
+        // 2. التحقق من وجود أطباء مرتبطين بالتخصص قبل الحذف النهائي
+        if ($specialty->doctorProfiles()->exists()) {
+            throw new Exception("لا يمكن حذف التخصص نهائياً لأنه مرتبط بأطباء حاليين في النظام.", 422);
         }
+
+        // 3. الحذف النهائي المباشر من الموديل
+        return (bool) $specialty->forceDelete();
     }
+   
 
     public function restore(int $id): Specialty
     {
